@@ -1,64 +1,107 @@
 import numpy as np 
-from gaussian import multiGaussian, gaussian
+import math
+from gaussian import multi_gaussian, gaussian, multi_gaussian_matrix
+from sklearn.cluster import KMeans
 
 class GaussianMixture:
-	def __init__(self, K):
-		self.K = K
+	def __init__(self, K, tol = 1e-6):
+		self._K = K
+		self._tol = tol
 
 	# Estimate model parameters with the EM algorithm.
-	def fit(X):
+	def fit(self, X):
 		# Data
-		self.Xtr = np.array(X)
+		self._Xtr = np.array(X)
 		# Data dimension
-		self.D = self.Xtr.shape[1]
-		self.N = self.Xtr.shape[0]
-		# Mean index
-		self.pi = np.random.rand(K)
-		# Means and covariances
-		means = []
-		covariances = []
-		for k in range(K):
-			# Random mean
-			rand_mean = np.random.rand(D)
-			means.append(rand_mean)
-			# Random covariance
-			var = np.random.rand()
-			rand_cov = var * np.eye(K)
-			covariances.append(rand_cov)
-		self.means = np.array(means)
-		self.covariances = np.array(covariances)
-
+		self._D = self._Xtr.shape[1]
+		self._N = self._Xtr.shape[0]
+		# Init parameters
+		self._init_params()
 		# EM algorithm
-		for i in range(10000):
-			# Theta fixed, find to
-			to_matrix = np.zeros((self.N, self.K))
-			for n in range(self.N):
-				for k in range(self.K):
-					to_matrix[n, k] = self.pi[k] * multiGaussian(X[n], self.means[k], \
-							self.covariances[k])
-			to_matrix = 1. * to_matrix / np.sum(to_matrix, axis = 0)		
+		self._em()
+
+	# Initialize parameters
+	def _init_params(self):
+		# Weight of mixture
+		pi = np.random.rand(self._K)
+		pi /= np.sum(pi)
+		# Means: init by kmeans
+		means = []
+		kmeans = KMeans(n_clusters = self._K, random_state = 0)\
+				.fit(self._Xtr)
+		means = kmeans._cluster_centers
+		# Covariances from means
+		covariances = self._covariances(means, kmeans.labels_, self._Xtr)
+
+		self._pi, self._means, self._covariances = pi, means, covariances
+
+	# Covariance from data and means
+	def _covariances(means, labels, data):
+		covariances = []
+		for k in range(self._K):
+			mean = means[k]
+			X_k = data[labels == k]
+			N = X_k.shape[0]
+			Xbar = X_k - means
+			cov = Xbar.dot(Xbar.T)
+			covariances.append(cov)
+
+		return np.array(covariances)
+
+	# EM algorithm, with paramaters initialized
+	def _em(self):
+		old_log_likelihood = self._log_likelihood()
+		for i in xrange(2000):
+			print 'Iterator number %d' % (i + 1)
 			
-			# Fix to, find theta
-			for k in range(self.K):
-				sum_to_k = np.sum(to_matrix[:, k])
-				self.means[k] = to_matrix[:, k].T.dot(X) / sum_to_k
-				self.covariances[k] = to_matrix[:, k].T.dot((X - means[k]).dot((X - means[k]).T))
-				self.pi[k] = 1. * sum_to_k / self.N
+			# E - step: estimate posterior
+			gaussian_mat = []
+			for k in range(self._K):
+				prob_vec = multi_gaussian_matrix(self._Xtr,\
+						self._means[k], self._covariances[k])
+				gaussian_mat.append(prob_vec)
+			gaussian_mat = np.array(gaussian_mat).T # NxK
+			pi_diag = np.diag(self._pi) # KxK
+			posterior_mat = gaussian_mat.dot(pi_diag) # NxK
+			# Normalize
+			self._posterior_matrix = 1. * posterior_mat /\
+					np.sum(posterior_mat, axis = 1).reshape(self._N, 1)
 			
+			# M - step: optimize parameters
+			trans_posterior = self._posterior_matrix.T # KxN
+			k_sums = np.sum(trans_posterior, axis = 1).reshape(self._K, 1) # Kx1
+ 			self._means = trans_posterior.dot(self._Xtr) / k_sums
+ 			self._pi = k_sums / self._N
+ 			# Covariances
+ 			covariances = []
+ 			for k in range(self._K):
+ 				Xbar_k = self._Xtr - self._means[k] # NxD
+ 				post_k = self._posterior_matrix[:, k] # N
+ 				cov = (post_k * Xbar_k.T).dot(Xbar_k) * 1. / k_sums[k]
+				covariances.append(cov)
+			self._covariances = np.array(covariances)	
+
 			# Check convergence
-			# ...
+			new_log_likehood = self._log_likelihood()
+			if math.fabs(new_log_likehood - old_log_likelihood) < self._tol:
+				break
+			old_log_likelihood = new_log_likehood
+
+	# Calculate log likelihood
+	def _log_likelihood(self):
+		
 
 	# Get parameters for this estimator.
-	def get_params():
-		return pi, means, covariances
+	def get_params(self):
+		return self._pi, self._means, self._covariances
 
 	# Predict the labels for the data samples in X using trained model.
-	def predict(X):
+	def predict(self, X):
 		N = X.shape[0]
 		D = X.shape[1]
-		to_matrix = np.zeros((N, self.K))
+		to_matrix = np.zeros((N, self._K))
 		# Check dimension
-		if (D != self.D):
+		if (D != self._D):
 			try:
 				raise Exception('Dimension not valid')
 			except Exception as exp:
@@ -66,9 +109,9 @@ class GaussianMixture:
 			return
 		# Calculate to_matrix
 		for n in range(N):
-			for k in range(self.K):
-				to_matrix[n, k] = self.pi[k] * multiGaussian(X[n], self.means[k], \
-						self.covariances[k])
+			for k in range(self._K):
+				to_matrix[n, k] = self._pi[k] * multi_gaussian(X[n], self._means[k], \
+						self._covariances[k])
 		to_matrix = 1. * to_matrix / np.sum(to_matrix, axis = 0)
 		pred = np.argmax(to_matrix, axis = 1)
 
