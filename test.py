@@ -14,4 +14,5 @@ from gmm import GaussianMixture
 my_model = GaussianMixture(K = 4)
 my_model.fit(train)
 
-# print my_model.predict(test)
+print my_model.predict(test)
+

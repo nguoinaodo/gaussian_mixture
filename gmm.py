@@ -62,10 +62,10 @@ class GaussianMixture:
 				gaussian_mat.append(prob_vec)
 			gaussian_mat = np.array(gaussian_mat).T # NxK
 			pi_diag = np.diag(self._pi) # KxK
-			posterior_mat = gaussian_mat.dot(pi_diag) # NxK
+			self._unnormal_posterior_matrix = gaussian_mat.dot(pi_diag) # NxK
 			# Normalize
-			self._posterior_matrix = 1. * posterior_mat /\
-					np.sum(posterior_mat, axis = 1).reshape(self._N, 1)
+			self._posterior_matrix = 1. * self._unnormal_posterior_matrix /\
+					np.sum(self._unnormal_posterior_matrix, axis = 1).reshape(self._N, 1)
 			
 			# M - step: optimize parameters
 			trans_posterior = self._posterior_matrix.T # KxN
@@ -89,7 +89,12 @@ class GaussianMixture:
 
 	# Calculate log likelihood
 	def _log_likelihood(self):
-		
+		# self._unnormal_posterior_matrix: NxK
+		sum_k = np.sum(self._unnormal_posterior_matrix, axis = 1)
+		log_sum_k = np.log(sum_k)
+		log_likelihood = np.sum(log_sum_k)
+
+		return log_likelihood
 
 	# Get parameters for this estimator.
 	def get_params(self):
@@ -97,9 +102,9 @@ class GaussianMixture:
 
 	# Predict the labels for the data samples in X using trained model.
 	def predict(self, X):
+		X = np.array(X)
 		N = X.shape[0]
 		D = X.shape[1]
-		to_matrix = np.zeros((N, self._K))
 		# Check dimension
 		if (D != self._D):
 			try:
@@ -107,13 +112,16 @@ class GaussianMixture:
 			except Exception as exp:
 				print exp
 			return
-		# Calculate to_matrix
-		for n in range(N):
-			for k in range(self._K):
-				to_matrix[n, k] = self._pi[k] * multi_gaussian(X[n], self._means[k], \
-						self._covariances[k])
-		to_matrix = 1. * to_matrix / np.sum(to_matrix, axis = 0)
-		pred = np.argmax(to_matrix, axis = 1)
+		# Predict
+		gaussian_mat = []
+		for k in range(self._K):
+			prob_vec = multi_gaussian_matrix(self._Xtr,\
+					self._means[k], self._covariances[k])
+			gaussian_mat.append(prob_vec)
+		gaussian_mat = np.array(gaussian_mat).T # NxK
+		pi_diag = np.diag(self._pi) # KxK
+		mat = gaussian_mat.dot(pi_diag) # NxK
+		pred = np.argmax(mat, axis = 1)
 
 		return pred
 
