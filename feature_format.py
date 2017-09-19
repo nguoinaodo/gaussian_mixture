@@ -10,7 +10,7 @@ for row in result:
 data = np.array(data)
 
 # Crop and convert type
-data = data[1:, 1: 5].astype(np.float)
+data = data[1:, 1: 15].astype(np.float)
 
 # Normalization
 cols_max = np.max(data, axis = 0)

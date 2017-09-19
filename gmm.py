@@ -4,7 +4,7 @@ from gaussian import multi_gaussian, gaussian, multi_gaussian_matrix
 from sklearn.cluster import KMeans
 
 class GaussianMixture:
-	def __init__(self, K, tol = 1e-6):
+	def __init__(self, K, tol = 1e-2):
 		self._K = K
 		self._tol = tol
 
@@ -29,38 +29,59 @@ class GaussianMixture:
 		means = []
 		kmeans = KMeans(n_clusters = self._K, random_state = 0)\
 				.fit(self._Xtr)
-		means = kmeans._cluster_centers
+		means = kmeans.cluster_centers_
 		# Covariances from means
 		covariances = self._covariances(means, kmeans.labels_, self._Xtr)
 
 		self._pi, self._means, self._covariances = pi, means, covariances
 
-	# Covariance from data and means
-	def _covariances(means, labels, data):
+	# Covariances from data and means
+	def _covariances(self, means, labels, data):
 		covariances = []
 		for k in range(self._K):
 			mean = means[k]
 			X_k = data[labels == k]
+			# print "X_%d: " % k, X_k
 			N = X_k.shape[0]
-			Xbar = X_k - means
-			cov = Xbar.dot(Xbar.T)
+			Xbar = X_k - mean # NxD
+			# print Xbar.shape
+			cov = 1. * Xbar.T.dot(Xbar) / N
 			covariances.append(cov)
 
 		return np.array(covariances)
 
+	# Covariance
+	def _covariance(self, mean, X):
+		Xbar = X - mean
+		cov = 1. * Xbar.T.dot(Xbar) / X.shape[0]
+
+		return cov
+
 	# EM algorithm, with paramaters initialized
 	def _em(self):
-		old_log_likelihood = self._log_likelihood()
+		old_log_likelihood = -9999
 		for i in xrange(2000):
 			print 'Iterator number %d' % (i + 1)
+			# print self._pi
 			
 			# E - step: estimate posterior
 			gaussian_mat = []
 			for k in range(self._K):
-				prob_vec = multi_gaussian_matrix(self._Xtr,\
-						self._means[k], self._covariances[k])
+				try:
+					prob_vec = multi_gaussian_matrix(self._Xtr,\
+							self._means[k], self._covariances[k])
+					# print prob_vec.shape
+				except Exception as exp:
+					self._means[k] = self._means[0] + 10 * np.random.rand(self._D)
+					self._covariances[k] = self._covariance(self._means[k], self._Xtr)
+					# prob_vec = np.random.rand(self._N)
+					# prob_vec = 1. * prob_vec / np.sum(prob_vec)
+					# print prob_vec.shape
+					prob_vec = multi_gaussian_matrix(self._Xtr,\
+							self._means[k], self._covariances[k])
 				gaussian_mat.append(prob_vec)
 			gaussian_mat = np.array(gaussian_mat).T # NxK
+			# print gaussian_mat.shape
 			pi_diag = np.diag(self._pi) # KxK
 			self._unnormal_posterior_matrix = gaussian_mat.dot(pi_diag) # NxK
 			# Normalize
@@ -71,17 +92,18 @@ class GaussianMixture:
 			trans_posterior = self._posterior_matrix.T # KxN
 			k_sums = np.sum(trans_posterior, axis = 1).reshape(self._K, 1) # Kx1
  			self._means = trans_posterior.dot(self._Xtr) / k_sums
- 			self._pi = k_sums / self._N
+ 			self._pi = (k_sums / self._N).reshape(self._K)
  			# Covariances
  			covariances = []
  			for k in range(self._K):
  				Xbar_k = self._Xtr - self._means[k] # NxD
  				post_k = self._posterior_matrix[:, k] # N
- 				cov = (post_k * Xbar_k.T).dot(Xbar_k) * 1. / k_sums[k]
+ 				cov = (post_k * Xbar_k.T).dot(Xbar_k) * 1. / k_sums[k][0]
 				covariances.append(cov)
 			self._covariances = np.array(covariances)	
 
 			# Check convergence
+			print old_log_likelihood
 			new_log_likehood = self._log_likelihood()
 			if math.fabs(new_log_likehood - old_log_likelihood) < self._tol:
 				break
@@ -103,6 +125,7 @@ class GaussianMixture:
 	# Predict the labels for the data samples in X using trained model.
 	def predict(self, X):
 		X = np.array(X)
+		print X.shape
 		N = X.shape[0]
 		D = X.shape[1]
 		# Check dimension
@@ -115,7 +138,7 @@ class GaussianMixture:
 		# Predict
 		gaussian_mat = []
 		for k in range(self._K):
-			prob_vec = multi_gaussian_matrix(self._Xtr,\
+			prob_vec = multi_gaussian_matrix(X,\
 					self._means[k], self._covariances[k])
 			gaussian_mat.append(prob_vec)
 		gaussian_mat = np.array(gaussian_mat).T # NxK

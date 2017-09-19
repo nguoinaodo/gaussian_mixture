@@ -1,4 +1,5 @@
 import numpy as np
+from scipy.stats import multivariate_normal
 import math
 
 def multi_gaussian(x, mean, covariance):
@@ -31,7 +32,7 @@ def gaussian(x, mean, variance):
 
 	return A * np.exp(B)
 
-def multi_gaussian_matrix(X, mean, covariance):
+def my_multi_gaussian_matrix(X, mean, covariance):
 	"""
 	Probability of N data points
 	X: NxD
@@ -53,7 +54,10 @@ def multi_gaussian_matrix(X, mean, covariance):
 	mean = np.array(mean).reshape(1, D)
 	Xhat = X - mean
 	covariance = np.array(covariance)
+	# print "Covariance: "
+	# print covariance
 	detCov = np.linalg.det(covariance)
+	# print 'det', detCov
 	invCov = np.linalg.inv(covariance)
 	A = .5 / ((math.pi ** (.5 * D)) * (detCov ** .5))
 	B = Xhat.dot(invCov)
@@ -63,6 +67,14 @@ def multi_gaussian_matrix(X, mean, covariance):
 
 	return A * F
 
+def multi_gaussian_matrix(X, mean, cov):
+	X = np.array(X)
+	mean = np.array(mean)
+	cov = np.array(cov)
+	# print X.shape
+	# print mean.shape
+	return multivariate_normal.pdf(X, mean, cov);
+
 def test():
 	X = [[1, 2, 3], 
 		 [4, 5, 7], 
@@ -70,5 +82,9 @@ def test():
 	mean = [4, 5, 7]
 	covariance = [[1, 0, 0], [0, 1, 0], [0, 0, 1]]
 	print multi_gaussian_matrix(X, mean, covariance)
+	print multivariate_normal.pdf(X, mean, covariance)
+	print multivariate_normal.pdf(3, 2, 3)
+	print gaussian(3, 2, 3)
 
-test()
+
+# test()
